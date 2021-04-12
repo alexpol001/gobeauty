@@ -1,0 +1,161 @@
+<?php
+
+namespace common\models;
+
+use common\components\Common;
+use Yii;
+
+/**
+ * This is the model class for table "{{%user_info}}".
+ *
+ * @property int $id
+ * @property int $user_id
+ * @property string $name
+ * @property int $description
+ * @property int $city
+ * @property string $phone
+ * @property string $street
+ * @property string $house
+ * @property string $room
+ * @property string $housing
+ * @property string $location
+ * @property string $photo_points
+ * @property string $categories
+ */
+class UserInfo extends \yii\db\ActiveRecord
+{
+    /**
+     * {@inheritdoc}
+     */
+    public static function tableName()
+    {
+        return '{{%user_info}}';
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function rules()
+    {
+        return [
+            [['user_id'], 'required'],
+            [['user_id', ], 'integer'],
+            [['description', 'city', 'name', 'phone', 'street', 'house', 'room', 'housing'], 'string', 'max' => 255],
+            [['location', 'photo_points', 'categories'], 'string'],
+        ];
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function attributeLabels()
+    {
+        return [
+            'id' => 'ID',
+            'user_id' => 'User ID',
+            'name' => 'Name',
+            'description' => 'Description',
+            'city' => 'City',
+            'phone' => 'Phone',
+            'street' => 'Street',
+            'house' => 'House',
+            'room' => 'Room',
+            'housing' => 'Housing',
+        ];
+    }
+
+    public function getPhoto() {
+        $path = '/uploads/users/' . $this->user_id . '/general/general.jpg';
+        if (file_exists(Yii::getAlias("@frontend/web".$path))) {
+            return 'https://' . $_SERVER['SERVER_NAME'] . $path;
+        }
+        return false;
+    }
+
+    public function getSmallPhoto() {
+        $path = '/uploads/users/' . $this->user_id . '/general/small_general.jpg';
+        if (file_exists(Yii::getAlias("@frontend/web".$path))) {
+            return 'https://' . $_SERVER['SERVER_NAME'] . $path;
+        }
+        return false;
+    }
+
+    public function setPhotoPoints($x1, $y1, $x2, $y2) {
+        $this->photo_points = $x1.', '.$y1.', '.$x2.', '.$y2;
+        return $this->save();
+    }
+
+    public function getPortfolioImages($size = 180)
+    {
+        $files_add = $this->getUrlPortfolioFiles();
+        $files = [];
+        foreach ($files_add as $file) {
+            $files[] = '<img class="cabinet__description-promo-img" src="'.$file.'" alt="" width="'.$size.'" height="'.$size.'">';
+        }
+        return $files;
+    }
+
+    public function getPortfolioFiles() {
+        $files_add = $this->getUrlPortfolioFiles();
+        $files = [];
+        foreach ($files_add as $file) {
+            $files[] = basename($file);
+        }
+        return $files;
+    }
+
+    public function getUrlPortfolioFiles()
+    {
+        $files_add = [];
+        $path = Yii::getAlias("@frontend/web/uploads/users/" . $this->user_id."/portfolio");
+        if (is_dir($path)) {
+            $files = \yii\helpers\FileHelper::findFiles($path);
+            foreach ($files as $file) {
+                $files_add[] = 'http://' . $_SERVER['SERVER_NAME'] . '/uploads/users/'.$this->user_id . '/portfolio/' . basename($file);
+            }
+        }
+        return $files_add;
+    }
+
+    private function setLocation() {
+        $city = $this->city;
+        $street = $this->street;
+        $house = $this->house;
+        if (!$city || !$street || !$house) {
+            $this->location = null;
+            return false;
+        }
+        $city .= ', ';
+        $street .= ' улица, ';
+        $city = str_replace(' ', '%20', $city);
+        $street = str_replace(' ', '%20', $street);
+        $house = str_replace(' ', '%20', $house);
+//        $url = 'http://search.maps.sputnik.ru/search?q='.$city.$street.$house;
+//        https://nominatim.openstreetmap.org/search?q=Псков, Гражданская улица, 9а&format=json&polygon=1&addressdetails=1
+        $opts = array('http'=>array('header'=>"User-Agent: StevesCleverAddressScript 3.7.6\r\n"));
+        $context = stream_context_create($opts);
+        $url = 'https://nominatim.openstreetmap.org/search?q='.$city.$street.$house.'&format=json';
+        try {
+            $info = file_get_contents($url, false, $context);
+            $info = json_decode($info, true);
+        } catch (\Exception $exception) {
+            $this->location = null;
+            return false;
+        }
+        $result = $info[0];
+        $this->location = $result ? $result['lat'].', '.$result['lon'] : null;
+        return true;
+    }
+
+    public function beforeSave($insert)
+    {
+        if ($this->city) {
+            $this->city = Common::mb_ucfirst($this->city);
+        }
+        if ($this->street) {
+            $this->street = Common::mb_ucfirst($this->street);
+        }
+        $this->setLocation();
+        return parent::beforeSave($insert); // TODO: Change the autogenerated stub
+    }
+}
